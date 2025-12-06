@@ -1,13 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Clave para guardar en el navegador (si el usuario quiere cambiar la BD manualmente)
+// --- CLAVE PARA GUARDAR CONFIGURACIÓN ---
 const DB_CONFIG_KEY = 'sushiblack_db_config';
 
-// --- FUNCIONES QUE FALTABAN (Para que Login.tsx no falle) ---
+// --- FUNCIONES NECESARIAS PARA EL LOGIN (¡NO BORRAR!) ---
 
 export const saveDbConfig = (url: string, key: string) => {
   localStorage.setItem(DB_CONFIG_KEY, JSON.stringify({ url, key }));
-  // Recargar la página para aplicar cambios
   window.location.reload();
 };
 
@@ -28,18 +27,13 @@ export const getDbConfig = () => {
   return null;
 };
 
-// --- INICIALIZACIÓN DEL CLIENTE ---
+// --- CONEXIÓN CON SUPABASE ---
 
-// 1. Intentamos leer configuración manual
 const localConfig = getDbConfig();
 
-// 2. Si no hay manual, usamos las variables de entorno de Vercel
+// Usamos la configuración guardada o las variables de Vercel
 const supabaseUrl = localConfig?.url || import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = localConfig?.key || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('⚠️ Faltan las credenciales de Supabase. Revisa las variables de entorno en Vercel.');
-}
-
-// Creamos el cliente (evitamos error si las strings están vacías para que compile)
+// Creamos el cliente de base de datos
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
