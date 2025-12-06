@@ -1,9 +1,17 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Employee, InventoryItem, InventorySession, OvertimeRecord, SanctionRecord, WalletTransaction, FixedExpense, BudgetAnalysis } from "../types";
 
-// Note: Process.env.API_KEY is expected to be present.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Función auxiliar para obtener el cliente de IA de forma segura
+// Solo se crea cuando se necesita, no al cargar la página
+const getAIClient = () => {
+  const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || "DUMMY_KEY";
+  // Si no hay key real, devolvemos null para controlar el error amistosamente después
+  if (!apiKey || apiKey === "DUMMY_KEY") {
+    console.warn("Google API Key no configurada o es inválida.");
+    return null; 
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export const generateOvertimeAnalysis = async (
   employees: Employee[], 
@@ -11,11 +19,13 @@ export const generateOvertimeAnalysis = async (
   sanctions?: SanctionRecord[]
 ): Promise<string> => {
   
+  const ai = getAIClient();
+  if (!ai) return "⚠️ Error: Configura la API Key de Google (VITE_GOOGLE_API_KEY) en Vercel para usar la IA.";
+
   if (records.length === 0 && (!sanctions || sanctions.length === 0)) {
     return "No hay suficientes datos (horas extras o sanciones) para generar un análisis. Por favor registre actividad primero.";
   }
 
-  // Prepare data summary for the prompt
   const employeeSummary = employees.map(e => ({
     name: e.name,
     position: e.position,
@@ -42,20 +52,16 @@ export const generateOvertimeAnalysis = async (
 
   const prompt = `
     Actúa como un Gerente de Operaciones Senior y CFO para "Sushiblack", un restaurante exclusivo.
-    
     Analiza los siguientes datos operativos:
-    
     PERFIL DE EMPLEADOS: ${JSON.stringify(employeeSummary)}
     REGISTRO DE HORAS EXTRAS: ${JSON.stringify(recordSummary)}
     LIBRO DE NOVEDADES (SANCIONES/STRIKES): ${JSON.stringify(sanctionSummary)}
     
     Proporciona un informe estratégico en español (formato Markdown) que incluya:
-    
-    1. **Análisis Financiero de Horas Extras**: Impacto en el presupuesto (ARS). Menciona cuánto se ha pagado ya y cuánto falta pagar (deuda pendiente).
-    2. **Desempeño y Disciplina**: Cruza los datos de horas extras con las sanciones. ¿Hay empleados problemáticos? (Ej. muchas horas extras pero también llegadas tarde o strikes).
-    3. **Cumplimiento de Horarios**: Identifica patrones de entrada/salida irregular.
-    4. **Recomendaciones**: Sugiere acciones concretas (despidos, bonos, cambios de turno).
-    
+    1. Análisis Financiero de Horas Extras.
+    2. Desempeño y Disciplina.
+    3. Cumplimiento de Horarios.
+    4. Recomendaciones.
     Mantén un tono profesional, directo y elegante.
   `;
 
@@ -64,11 +70,10 @@ export const generateOvertimeAnalysis = async (
       model: 'gemini-2.5-flash',
       contents: prompt,
     });
-    
     return response.text || "No se pudo generar el análisis.";
   } catch (error) {
     console.error("Error generating analysis:", error);
-    return "Hubo un error al conectar con el asistente de IA. Por favor verifique su conexión o intente más tarde.";
+    return "Hubo un error al conectar con el asistente de IA. Verifique la API Key.";
   }
 };
 
@@ -76,6 +81,9 @@ export const generateInventoryEmail = async (
     session: InventorySession,
     items: InventoryItem[]
 ): Promise<string> => {
+    const ai = getAIClient();
+    if (!ai) return "⚠️ IA no disponible. Configure la API Key.";
+
     const consumptionData = session.data.map(d => {
         const item = items.find(i => i.id === d.itemId);
         return {
@@ -88,24 +96,10 @@ export const generateInventoryEmail = async (
     });
 
     const prompt = `
-        Actúa como el Jefe de Cocina de "Sushiblack". Escribe un informe de inventario por correo electrónico para los dueños.
-        
-        DATOS DEL TURNO:
-        Fecha: ${session.date}
-        Apertura: ${session.openedBy} (${session.startTime})
-        Cierre: ${session.closedBy} (${session.endTime})
-        
-        CONSUMOS:
-        ${JSON.stringify(consumptionData)}
-        
-        Estructura del Email:
-        1. Asunto formal.
-        2. Resumen ejecutivo del turno.
-        3. Lista detallada de consumos (Items clave como Salmón, Arroz, Langostinos).
-        4. Alerta si algún consumo parece excesivo o si hay stock crítico (cercano a 0 en final).
-        5. Cierre formal.
-        
-        Solo devuelve el cuerpo del texto y el asunto. No uses markdown complejo, solo texto plano o formato simple.
+        Actúa como el Jefe de Cocina de "Sushiblack". Escribe un informe de inventario.
+        DATOS DEL TURNO: Fecha: ${session.date}, Apertura: ${session.openedBy}, Cierre: ${session.closedBy}.
+        CONSUMOS: ${JSON.stringify(consumptionData)}
+        Solo devuelve el cuerpo del texto y el asunto.
     `;
 
     try {
@@ -124,19 +118,15 @@ export const generateFinancialReport = async (
     totalBalance: number,
     pendingDebt: number
 ): Promise<string> => {
-    // Summarize last 5 transactions
+    const ai = getAIClient();
+    if (!ai) return "⚠️ IA no disponible. Configure la API Key.";
+
     const recent = transactions.slice(0, 5).map(t => `${t.type === 'INCOME' ? '+' : '-'}${t.amount} (${t.category})`);
 
     const prompt = `
-        Actúa como Asesor Financiero de Sushiblack. Genera un reporte "Situación Actual" MUY BREVE (máximo 3 párrafos).
-        
-        DATOS:
-        Balance Billetera Global: $${totalBalance}
-        Deuda Pendiente (Nómina/Regalías): $${pendingDebt}
-        Movimientos Recientes: ${recent.join(', ')}
-        
-        Analiza la liquidez actual frente a las deudas. Da un consejo rápido sobre si se pueden realizar inversiones o si hay que cuidar el flujo de caja.
-        Formato Markdown simple.
+        Actúa como Asesor Financiero de Sushiblack. Reporte BREVE "Situación Actual".
+        Balance: $${totalBalance}, Deuda: $${pendingDebt}, Recientes: ${recent.join(', ')}.
+        Analiza liquidez vs deuda. Consejo rápido. Formato Markdown.
     `;
 
     try {
@@ -154,55 +144,33 @@ export const generateBudgetAnalysis = async (
     totalBalance: number,
     fixedExpenses: FixedExpense[],
     employees: Employee[],
-    transactions: WalletTransaction[] = [] // Added history
+    transactions: WalletTransaction[] = []
 ): Promise<BudgetAnalysis | null> => {
-    // Calculate payroll sum
+    const ai = getAIClient();
+    if (!ai) return null;
+
     const payroll = employees.filter(e => e.active).reduce((acc, e) => acc + e.monthlySalary, 0);
-    // Calculate pending fixed expenses (taking into account partial payments)
     const pendingFixed = fixedExpenses
         .filter(e => !e.isPaid)
         .reduce((acc, e) => acc + (e.amount - (e.paidAmount || 0)), 0);
 
-    // Get last 20 transactions for trend analysis
     const history = transactions.slice(0, 20).map(t => ({
-        date: t.date,
-        type: t.type,
-        amount: t.amount,
-        category: t.category
+        date: t.date, type: t.type, amount: t.amount, category: t.category
     }));
 
     const prompt = `
-        Actúa como el CFO de "Sushiblack". Analiza la situación financiera y responde ÚNICAMENTE en formato JSON.
-        
-        DATOS DE ESTADO:
-        - Saldo Actual (Caja): $${totalBalance}
-        - Nómina Mensual (Empleados): $${payroll}
-        - Gastos Fijos Pendientes Reales: $${pendingFixed}
-        - Total Obligaciones Inmediatas: $${payroll + pendingFixed}
-
-        HISTORIAL RECIENTE (Para detectar tendencias de gasto):
-        ${JSON.stringify(history)}
-
-        INSTRUCCIONES JSON:
-        1. Calcula "healthScore" (0-100).
-        2. "healthStatus": "CRITICAL" (si score < 40), "WARNING" (40-70), "HEALTHY" (>70).
-        3. "realAvailableMoney": Saldo - Obligaciones. (Puede ser negativo).
-        4. "allocations": Array de objetos sugiriendo distribución del excedente. Si hay déficit, priorizar pagos críticos. Categories: "Materia Prima", "Infraestructura", "Reserva", "Ganancia".
-           Cada objeto: { name: string, percentage: number, amount: number, color: string (hex), description: string }.
-        5. "actionableTips": Array de strings con 3 consejos estratégicos basados en el HISTORIAL (ej. "Gastos en proveedores subieron un 20%, revisar precios" o "Buen flujo de caja, ideal para stock").
-
-        Output must be valid JSON without Markdown blocks.
+        Actúa como CFO de "Sushiblack". Analiza situación financiera.
+        Saldo: $${totalBalance}, Nómina: $${payroll}, Gastos Pendientes: $${pendingFixed}.
+        Historial: ${JSON.stringify(history)}
+        Output JSON: { healthScore, healthStatus, realAvailableMoney, allocations, actionableTips }.
     `;
 
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: {
-                responseMimeType: "application/json"
-            }
+            config: { responseMimeType: "application/json" }
         });
-        
         const jsonText = response.text;
         if (!jsonText) return null;
         return JSON.parse(jsonText) as BudgetAnalysis;
