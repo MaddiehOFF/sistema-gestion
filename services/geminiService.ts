@@ -9,60 +9,138 @@ import {
   BudgetAnalysis
 } from "../types";
 
-// ⛔️ IMPORTANTE: IA DESACTIVADA POR AHORA
-// No usamos GoogleGenAI ni ninguna API Key aquí.
+// Todas estas funciones son LOCALES.
+// No llaman a APIs externas ni usan claves de IA.
 
-// --- ANÁLISIS DE HORAS EXTRAS ---
+// --- ANÁLISIS DE HORAS EXTRAS (RESUMEN LOCAL) ---
 export const generateOvertimeAnalysis = async (
   employees: Employee[],
   records: OvertimeRecord[],
-  sanctions?: SanctionRecord[]
+  sanctions: SanctionRecord[] = []
 ): Promise<string> => {
-  return `
-⚠️ La función de análisis automático con IA está desactivada en esta versión.
+  if (records.length === 0 && sanctions.length === 0) {
+    return "No hay registros de horas extras ni sanciones para analizar.";
+  }
 
-Puedes seguir usando el sistema normalmente. 
-Las horas extras, sanciones y datos de empleados siguen registrándose, 
-pero el informe inteligente todavía no está disponible en producción.
-`.trim();
+  const empMap = new Map<string, Employee>();
+  employees.forEach(e => empMap.set(e.id, e));
+
+  let totalHours = 0;
+  let totalCost = 0;
+
+  records.forEach(r => {
+    totalHours += r.overtimeHours;
+    totalCost += r.overtimeAmount;
+  });
+
+  const formatoARS = (v: number) =>
+    new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: "ARS",
+      maximumFractionDigits: 0
+    }).format(v);
+
+  return [
+    "Resumen básico de horas extras:",
+    "",
+    `- Empleados con registros cargados: ${employees.length}`,
+    `- Registros de horas extras: ${records.length}`,
+    `- Total de horas extras: ${totalHours.toFixed(2)} hs`,
+    `- Costo total estimado: ${formatoARS(totalCost)}`,
+    `- Sanciones registradas: ${sanctions.length}`,
+    "",
+    "Recomendación general:",
+    "- Revisar los casos con muchas horas extras y validar si hace falta ajustar turnos o sumar personal."
+  ].join("\n");
 };
 
-// --- EMAIL DE INVENTARIO ---
+// --- EMAIL DE INVENTARIO (TEXTO LOCAL) ---
 export const generateInventoryEmail = async (
   session: InventorySession,
   items: InventoryItem[]
 ): Promise<string> => {
-  return `
-⚠️ El email automático de inventario generado por IA está desactivado.
+  const dateStr = new Date(session.date).toLocaleString("es-AR");
+  const lines: string[] = [];
 
-Revisa el cierre de inventario manualmente. 
-Fecha del turno: ${session.date}, Apertura: ${session.openedBy}, Cierre: ${session.closedBy}.
-`.trim();
+  lines.push(`Reporte de Inventario - Turno del ${dateStr}`);
+  lines.push("");
+  lines.push(`Apertura: ${session.startTime || "-"} (por ${session.openedBy})`);
+  lines.push(`Cierre:   ${session.endTime || "-"} (por ${session.closedBy || "-"})`);
+  lines.push("");
+  lines.push("Resumen por insumo:");
+
+  session.data.forEach(d => {
+    const item = items.find(i => i.id === d.itemId);
+    if (!item) return;
+    const initial = d.initial ?? 0;
+    const final = d.final ?? 0;
+    const cons = d.consumption ?? initial - final;
+    lines.push(
+      `- ${item.name}: Inicio ${initial} ${item.unit}, Fin ${final} ${item.unit}, Consumo ${cons} ${item.unit}`
+    );
+  });
+
+  lines.push("");
+  lines.push(
+    "Observaciones: revisar consumos muy altos o negativos para detectar posibles errores de carga."
+  );
+
+  return lines.join("\n");
 };
 
-// --- REPORTE FINANCIERO ---
+// --- REPORTE FINANCIERO (LOCAL) ---
 export const generateFinancialReport = async (
   transactions: WalletTransaction[],
   totalBalance: number,
   pendingDebt: number
 ): Promise<string> => {
-  return `
-⚠️ El reporte financiero con IA está desactivado en esta versión.
+  const ingresos = transactions
+    .filter(t => t.type === "INCOME" && !t.deletedAt)
+    .reduce((acc, t) => acc + t.amount, 0);
 
-Saldo actual: $${totalBalance.toFixed(2)}
-Deuda pendiente: $${pendingDebt.toFixed(2)}
+  const egresos = transactions
+    .filter(t => t.type === "EXPENSE" && !t.deletedAt)
+    .reduce((acc, t) => acc + t.amount, 0);
 
-Puedes seguir revisando los movimientos desde el panel normalmente.
-`.trim();
+  const formatoARS = (v: number) =>
+    new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: "ARS",
+      maximumFractionDigits: 0
+    }).format(v);
+
+  const lines: string[] = [];
+
+  lines.push("Reporte financiero básico");
+  lines.push("");
+  lines.push(`- Ingresos registrados: ${formatoARS(ingresos)}`);
+  lines.push(`- Egresos registrados:  ${formatoARS(egresos)}`);
+  lines.push(`- Saldo actual:        ${formatoARS(totalBalance)}`);
+  lines.push(`- Deuda pendiente:     ${formatoARS(pendingDebt)}`);
+  lines.push("");
+  lines.push("Comentarios generales:");
+  if (ingresos >= egresos) {
+    lines.push("- Los ingresos superan a los egresos: la caja está en terreno positivo.");
+  } else {
+    lines.push(
+      "- Los egresos superan a los ingresos: revisar costos, precios y frecuencia de retiros."
+    );
+  }
+  lines.push(
+    "- Asegurarse de que el saldo disponible cubra sueldos, proveedores y gastos fijos antes de hacer compras grandes."
+  );
+
+  return lines.join("\n");
 };
 
 // --- ANÁLISIS DE PRESUPUESTO ---
+// Por ahora no calculamos un BudgetAnalysis complejo.
+// Devolvemos null para que la UI pueda ocultar o ignorar esa funcionalidad.
 export const generateBudgetAnalysis = async (
   totalBalance: number,
   fixedExpenses: FixedExpense[],
   employees: Employee[],
   transactions: WalletTransaction[] = []
 ): Promise<BudgetAnalysis | null> => {
-  // Sin IA, devolvemos null y la UI debería manejarlo.
   return null;
 };
